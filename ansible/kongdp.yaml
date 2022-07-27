@@ -1,0 +1,77 @@
+---
+- name: Installs Kong Gateway data plane in a docker container, and registers it with Kong Konnect
+  hosts: localhost
+  gather_facts: no
+  become: yes
+  vars:
+    konnect: 'https://cloud.konghq.com'
+    username: '<paste Konnect username>'
+    password: "<paste Konnect password>"
+    version: 'kong-gateway:2.8.1.1'
+    runtime: '<paste Konnect runtime ID>'
+
+  tasks:
+    - name: Ensure a list of yum packages are installed
+      yum:
+        name: "{{ packages }}"
+        state: latest
+        update_cache: yes
+      vars:
+        packages:
+        - python-pip
+        - yum-utils
+        - device-mapper-persistent-data
+        - lvm2
+        - amazon-linux-extras
+
+    - name: Add extras repository
+      shell: yum-config-manager --enable extras
+
+    - name: Enable Some packages from amazon-linux-extras packages
+      shell: "amazon-linux-extras enable python3.8 ansible2 docker"
+
+    - name: clean yum metadata cache
+      command: yum clean metadata
+      args:
+        warn: false
+
+    - name: Ensure a list of yum packages are installed
+      yum:
+        name: "{{ packages }}"
+        state: present
+        update_cache: yes
+      vars:
+        packages:
+        - python3.8
+        - ansible
+        - docker-18.06.1ce-8.amzn2.x86_64 
+        - jq
+
+    - name: Enable Docker CE service at startup
+      service:
+        name: docker
+        state: started
+        enabled: yes
+
+    - name: Upgrade pip3
+      shell: "python3.8 -m pip install pip --upgrade"
+
+    - name: Ensure Python pip packages are installed
+      pip:
+        name: "{{ packages }}"
+        executable: /usr/local/bin/pip3.8
+      vars:
+        packages:
+        - boto
+        - boto3
+        - docker-compose
+
+    - name: Download Konnect setup shell script
+      get_url:
+        url: https://raw.githubusercontent.com/Kong/konnect-runtimes/pinned-cert/konnect-runtime-setup.sh
+        dest: /tmp/konnect-runtime-setup.sh 
+        mode: '0777'      
+
+    - name: Run script to setup runtime with Konnect
+      shell: "sudo /tmp/konnect-runtime-setup.sh -api {{ konnect }} -u '{{ username }}' -p '{{ password }}' -c '{{ runtime }}' -r 'kong' -ri '{{ version }}'"
+      
